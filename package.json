@@ -2,6 +2,20 @@
   "name": "bulkyfi",
   "private": true,
   "version": "0.1.0",
+  "description": "Local-first bulk certificate generator for turning templates and recipient spreadsheets into high-quality PDF or PNG exports.",
+  "homepage": "https://bulkyfi.vercel.app/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/robinfrancis186/bulkyfi.git"
+  },
+  "keywords": [
+    "certificates",
+    "bulk-certificate-generator",
+    "react",
+    "vite",
+    "pdf-export",
+    "csv"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
