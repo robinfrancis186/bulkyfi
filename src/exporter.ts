@@ -39,6 +39,22 @@ const loadImage = (src: string) =>
     image.src = src;
   });
 
+const loadedFontFamilies = new Set<string>();
+
+const ensureProjectFonts = async (project: Project) => {
+  if (typeof FontFace === "undefined") return;
+  await Promise.all(
+    (project.customFonts || []).map(async (font) => {
+      if (!font.dataUrl || loadedFontFamilies.has(font.family)) return;
+      const face = new FontFace(font.family, `url(${font.dataUrl})`);
+      await face.load();
+      document.fonts.add(face);
+      loadedFontFamilies.add(font.family);
+    })
+  );
+  await document.fonts.ready;
+};
+
 const fitText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number) => {
   if (ctx.measureText(text).width <= maxWidth) return text;
   let result = text;
@@ -77,6 +93,7 @@ export const renderProjectToImage = async (
   row: RecipientRow,
   options?: { mimeType?: "image/png" | "image/jpeg"; quality?: number }
 ) => {
+  await ensureProjectFonts(project);
   const sourceWidth = project.template?.width || 1600;
   const sourceHeight = project.template?.height || 1131;
   const { width, height } = outputSize(

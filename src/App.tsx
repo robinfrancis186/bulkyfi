@@ -20,12 +20,12 @@ import {
   Zap
 } from "lucide-react";
 import Papa from "papaparse";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { downloadBlob, exportSizeForProject, makePdfBlob, renderProjectToImage, renderProjectToPng, zipCertificates } from "./exporter";
-import { loadTemplateData, saveTemplateData } from "./indexedDb";
+import { loadFontData, loadTemplateData, saveFontData, saveTemplateData } from "./indexedDb";
 import { createProject, loadProjects, nowIso, saveProjects, uid } from "./storage";
 import { builtInTemplates, type BuiltInTemplate } from "./templateLibrary";
-import type { CertificateField, Project, RecipientRow, TemplateAsset } from "./types";
+import type { CertificateField, CustomFont, Project, RecipientRow, TemplateAsset } from "./types";
 
 const APP_NAME = "BulkyFi";
 const FONT_CHOICES = ["Inter", "Cormorant Garamond", "Georgia", "Arial"];
@@ -39,8 +39,8 @@ type Route =
   | { name: "editor"; id: string };
 
 type DragState =
-  | { mode: "move"; id: string; startX: number; startY: number; original: CertificateField }
-  | { mode: "resize"; id: string; startX: number; startY: number; original: CertificateField };
+  | { mode: "move"; id: string; startX: number; startY: number; canvasWidth: number; canvasHeight: number; original: CertificateField }
+  | { mode: "resize"; id: string; startX: number; startY: number; canvasWidth: number; canvasHeight: number; original: CertificateField };
 
 const DEFAULT_TEMPLATE =
   "data:image/svg+xml;charset=utf-8," +
@@ -114,6 +114,21 @@ const fileToDataUrl = (file: File) =>
     reader.readAsDataURL(file);
   });
 
+const fontNameFromFile = (file: File) =>
+  file.name
+    .replace(/\.[^.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9 ]+/gi, "")
+    .trim()
+    .replace(/\s+/g, " ") || "Custom Font";
+
+const fontFamilyFromName = (name: string) => `BulkyFi ${name} ${uid().slice(0, 6)}`;
+
+const fontChoicesForProject = (project?: Project) => [
+  ...FONT_CHOICES.map((font) => ({ label: font, family: font, kind: "Built-in" })),
+  ...(project?.customFonts || []).map((font) => ({ label: font.name, family: font.family, kind: "Uploaded" }))
+];
+
 const urlToDataUrl = async (url: string) => {
   const blob = await fetch(url).then((response) => {
     if (!response.ok) throw new Error("Template could not be loaded.");
@@ -143,26 +158,39 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    const hydrateTemplates = async () => {
+    const hydrateAssets = async () => {
       const hydrated = await Promise.all(
         loadProjects().map(async (project) => {
-          if (!project.template || project.template.dataUrl) return project;
-          const key = project.template.storageKey || project.template.id;
-          const dataUrl = await loadTemplateData(key);
-          return dataUrl ? { ...project, template: { ...project.template, dataUrl } } : project;
+          const template =
+            project.template && !project.template.dataUrl
+              ? await loadTemplateData(project.template.storageKey || project.template.id).then((dataUrl) =>
+                  dataUrl ? { ...project.template!, dataUrl } : project.template
+                )
+              : project.template;
+          const customFonts = await Promise.all(
+            (project.customFonts || []).map(async (font) => {
+              if (font.dataUrl) return font;
+              const dataUrl = await loadFontData(font.storageKey || font.id);
+              return dataUrl ? { ...font, dataUrl } : font;
+            })
+          );
+          return { ...project, template, customFonts };
         })
       );
       await Promise.all(
-        hydrated.map((project) =>
+        hydrated.flatMap((project) => [
           project.template?.dataUrl
             ? saveTemplateData(project.template.storageKey || project.template.id, project.template.dataUrl)
-            : Promise.resolve()
-        )
+            : Promise.resolve(),
+          ...(project.customFonts || []).map((font) =>
+            font.dataUrl ? saveFontData(font.storageKey || font.id, font.dataUrl) : Promise.resolve()
+          )
+        ])
       );
       if (!cancelled) setProjects(hydrated);
       if (!cancelled) setTemplatesReady(true);
     };
-    hydrateTemplates().catch(() => setTemplatesReady(true));
+    hydrateAssets().catch(() => setTemplatesReady(true));
     return () => {
       cancelled = true;
     };
@@ -628,6 +656,22 @@ function HistoryPage({
   );
 }
 
+function ProjectFontFaces({ project }: { project?: Project }) {
+  const css = (project?.customFonts || [])
+    .filter((font) => font.dataUrl)
+    .map(
+      (font) => `
+@font-face {
+  font-family: "${font.family.replace(/"/g, '\\"')}";
+  src: url("${font.dataUrl}");
+  font-display: swap;
+}`
+    )
+    .join("\n");
+
+  return css ? <style>{css}</style> : null;
+}
+
 function FontsPage({
   isAuthed,
   projects,
@@ -642,7 +686,9 @@ function FontsPage({
   signOut: () => void;
 }) {
   const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id || "");
+  const [notice, setNotice] = useState("");
   const selectedProject = projects.find((project) => project.id === selectedProjectId) || projects[0];
+  const availableFonts = fontChoicesForProject(selectedProject);
 
   useEffect(() => {
     if (!selectedProjectId && projects[0]) setSelectedProjectId(projects[0].id);
@@ -656,10 +702,39 @@ function FontsPage({
       ...selectedProject,
       fields: selectedProject.fields.map((field) => ({ ...field, fontFamily }))
     });
+    setNotice("Font applied to every placeholder in this project.");
+  };
+
+  const uploadFont = async (file?: File) => {
+    if (!file || !selectedProject) return;
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const name = fontNameFromFile(file);
+      const font: CustomFont = {
+        id: uid(),
+        name,
+        family: fontFamilyFromName(name),
+        mimeType: file.type || "font/unknown",
+        dataUrl,
+        storageKey: uid()
+      };
+      await saveFontData(font.storageKey || font.id, dataUrl);
+      const face = new FontFace(font.family, `url(${dataUrl})`);
+      await face.load();
+      document.fonts.add(face);
+      updateProject({
+        ...selectedProject,
+        customFonts: [...(selectedProject.customFonts || []), font]
+      });
+      setNotice(`${name} is ready in the editor and exports.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Font upload failed.");
+    }
   };
 
   return (
     <div className="app-page min-h-screen">
+      <ProjectFontFaces project={selectedProject} />
       <AppShell active="fonts" signOut={signOut} navigate={navigate} />
       <main className="workspace-main mx-auto max-w-6xl px-6 py-10">
         <section className="mb-8">
@@ -693,24 +768,42 @@ function FontsPage({
             </label>
           </div>
 
+          <label className={`upload-box mb-5 ${!selectedProject ? "pointer-events-none opacity-50" : ""}`}>
+            <Upload size={22} />
+            <span className="font-medium">Upload TTF, OTF, WOFF, or WOFF2</span>
+            <span className="text-xs text-ink-400">Uploaded fonts stay inside this browser and project.</span>
+            <input
+              className="sr-only"
+              type="file"
+              accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2,application/font-woff,application/x-font-ttf"
+              disabled={!selectedProject}
+              onChange={(event) => uploadFont(event.target.files?.[0])}
+            />
+          </label>
+
           <div className="grid gap-4 md:grid-cols-2">
-            {FONT_CHOICES.map((font) => (
+            {availableFonts.map((font) => (
               <button
-                key={font}
+                key={font.family}
                 className="font-card"
-                onClick={() => applyFont(font)}
+                onClick={() => applyFont(font.family)}
                 disabled={!selectedProject}
               >
-                <span className="text-sm font-bold text-ink-500">{font}</span>
-                <span className="mt-3 block text-3xl text-ink-900" style={{ fontFamily: font }}>
+                <span className="flex items-center justify-between gap-3 text-sm font-bold text-ink-500">
+                  <span>{font.label}</span>
+                  <span className="rounded-full bg-parchment-100 px-2 py-1 text-[10px] uppercase tracking-wider">{font.kind}</span>
+                </span>
+                <span className="mt-3 block text-3xl text-ink-900" style={{ fontFamily: font.family }}>
                   Certificate Preview
                 </span>
-                <span className="mt-2 block text-sm text-ink-400" style={{ fontFamily: font }}>
+                <span className="mt-2 block text-sm text-ink-400" style={{ fontFamily: font.family }}>
                   Names, courses, dates, and signatures.
                 </span>
               </button>
             ))}
           </div>
+
+          {notice && <p className="mt-5 rounded-xl bg-parchment-100 px-4 py-3 text-sm text-ink-600">{notice}</p>}
 
           {selectedProject && (
             <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-parchment-100 px-4 py-3">
@@ -820,6 +913,7 @@ function EditorPage({
 
   return (
     <div className="app-page min-h-screen">
+      <ProjectFontFaces project={project} />
       <AppShell active="editor" signOut={signOut} navigate={navigate} />
       <main className="workspace-main mx-auto max-w-[1500px] px-5 py-6">
         <div className="command-bar mb-5 flex flex-col justify-between gap-4 rounded-2xl border border-ink-100 bg-white p-4 shadow-soft lg:flex-row lg:items-center">
@@ -1017,6 +1111,32 @@ function DesignPanel({
   patchField: (id: string, patch: Partial<CertificateField>) => void;
   selectField: (id: string) => void;
 }) {
+  const availableFonts = fontChoicesForProject(project);
+
+  const uploadFont = async (file?: File) => {
+    if (!file) return;
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const name = fontNameFromFile(file);
+      const font: CustomFont = {
+        id: uid(),
+        name,
+        family: fontFamilyFromName(name),
+        mimeType: file.type || "font/unknown",
+        dataUrl,
+        storageKey: uid()
+      };
+      await saveFontData(font.storageKey || font.id, dataUrl);
+      const face = new FontFace(font.family, `url(${dataUrl})`);
+      await face.load();
+      document.fonts.add(face);
+      patchProject({ customFonts: [...(project.customFonts || []), font] });
+      setNotice(`${name} font added to this project.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Font upload failed.");
+    }
+  };
+
   const uploadTemplate = async (file?: File) => {
     if (!file) return;
     try {
@@ -1103,6 +1223,17 @@ function DesignPanel({
           onChange={(event) => uploadTemplate(event.target.files?.[0])}
         />
       </label>
+      <label className="upload-box">
+        <Type size={22} />
+        <span className="font-medium">Add custom font</span>
+        <span className="text-xs text-ink-400">Supports TTF, OTF, WOFF, and WOFF2.</span>
+        <input
+          className="sr-only"
+          type="file"
+          accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2,application/font-woff,application/x-font-ttf"
+          onChange={(event) => uploadFont(event.target.files?.[0])}
+        />
+      </label>
       <div>
         <div className="mb-3">
           <h3 className="label">Built-in templates</h3>
@@ -1171,10 +1302,11 @@ function DesignPanel({
           <label>
             <span className="label">Font</span>
             <select className="input mt-2" value={selectedField.fontFamily} onChange={(event) => patchField(selectedField.id, { fontFamily: event.target.value })}>
-              <option value="Cormorant Garamond">Cormorant Garamond</option>
-              <option value="Inter">Inter</option>
-              <option value="Georgia">Georgia</option>
-              <option value="Arial">Arial</option>
+              {availableFonts.map((font) => (
+                <option key={font.family} value={font.family}>
+                  {font.label}
+                </option>
+              ))}
             </select>
           </label>
           <div className="grid grid-cols-2 gap-3">
@@ -1453,12 +1585,24 @@ function CertificatePreview({
   readonly?: boolean;
 }) {
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const [previewScale, setPreviewScale] = useState(1);
+
+  useEffect(() => {
+    const element = canvasRef.current;
+    if (!element) return;
+    const updateScale = () => setPreviewScale(Math.max(0.42, element.getBoundingClientRect().width / 760));
+    updateScale();
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!dragState || readonly || !patchField) return;
     const move = (event: PointerEvent) => {
-      const dx = ((event.clientX - dragState.startX) / 760) * 100;
-      const dy = ((event.clientY - dragState.startY) / 537) * 100;
+      const dx = ((event.clientX - dragState.startX) / dragState.canvasWidth) * 100;
+      const dy = ((event.clientY - dragState.startY) / dragState.canvasHeight) * 100;
       if (dragState.mode === "move") {
         patchField(dragState.id, {
           x: Math.min(96, Math.max(0, dragState.original.x + dx)),
@@ -1485,8 +1629,17 @@ function CertificatePreview({
     return row?.values[column] || row?.values[field.placeholder] || `{{${field.placeholder}}}`;
   };
 
+  const dragMetrics = (target: EventTarget | null) => {
+    const element = target instanceof Element ? target.closest(".certificate-canvas") : null;
+    const rect = element?.getBoundingClientRect();
+    return {
+      canvasWidth: rect?.width || 760,
+      canvasHeight: rect?.height || 537
+    };
+  };
+
   return (
-    <div className="certificate-canvas">
+    <div className="certificate-canvas" ref={canvasRef}>
       <img src={project.template?.dataUrl || DEFAULT_TEMPLATE} alt="" className="absolute inset-0 h-full w-full object-cover" />
       {project.fields.map((field) => (
         <div
@@ -1499,7 +1652,7 @@ function CertificatePreview({
             height: `${field.height}%`,
             color: field.color,
             fontFamily: field.fontFamily,
-            fontSize: readonly ? `${Math.max(8, field.fontSize * 0.24)}px` : `${field.fontSize}px`,
+            fontSize: readonly ? `${Math.max(8, field.fontSize * 0.24)}px` : `${field.fontSize * previewScale}px`,
             fontWeight: field.weight,
             textAlign: field.align,
             lineHeight: 1.1
@@ -1508,7 +1661,14 @@ function CertificatePreview({
             if (readonly) return;
             event.preventDefault();
             selectField?.(field.id);
-            setDragState({ mode: "move", id: field.id, startX: event.clientX, startY: event.clientY, original: field });
+            setDragState({
+              mode: "move",
+              id: field.id,
+              startX: event.clientX,
+              startY: event.clientY,
+              ...dragMetrics(event.currentTarget),
+              original: field
+            });
           }}
         >
           <span>{valueForField(field)}</span>
@@ -1519,7 +1679,14 @@ function CertificatePreview({
               onPointerDown={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                setDragState({ mode: "resize", id: field.id, startX: event.clientX, startY: event.clientY, original: field });
+                setDragState({
+                  mode: "resize",
+                  id: field.id,
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  ...dragMetrics(event.currentTarget),
+                  original: field
+                });
               }}
             />
           )}

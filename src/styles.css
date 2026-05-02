@@ -726,7 +726,7 @@
 }
 
 .editor-stage-wrap {
-  overflow: auto;
+  overflow: hidden;
   border-radius: 28px;
   background:
     radial-gradient(circle at 50% 12%, rgba(0, 113, 227, .11), transparent 34%),
@@ -740,11 +740,12 @@
     12px -12px,
     -12px 0;
   background-size: 24px 24px;
-  padding: 28px;
+  padding: clamp(12px, 2vw, 28px);
 }
 
 .editor-stage {
-  min-width: 760px;
+  width: min(100%, 980px);
+  min-width: 0;
   max-width: 980px;
   margin: 0 auto;
 }

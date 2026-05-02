@@ -62,6 +62,7 @@ export const createProject = (name = "Untitled Certificate"): Project => {
     name,
     createdAt: timestamp,
     updatedAt: timestamp,
+    customFonts: [],
     fields: createDefaultFields(),
     rows: [
       {
@@ -89,6 +90,10 @@ export const createProject = (name = "Untitled Certificate"): Project => {
 
 const normalizeProject = (project: Project): Project => ({
   ...project,
+  customFonts: (project.customFonts || []).map((font) => ({
+    ...font,
+    storageKey: font.storageKey || font.id
+  })),
   exportSettings: {
     ...project.exportSettings,
     maxDimension: project.exportSettings.maxDimension ?? 2400
@@ -103,6 +108,11 @@ const normalizeProject = (project: Project): Project => ({
 
 const projectForStorage = (project: Project): Project => ({
   ...project,
+  customFonts: (project.customFonts || []).map((font) => ({
+    ...font,
+    dataUrl: undefined,
+    storageKey: font.storageKey || font.id
+  })),
   template: project.template
     ? {
         ...project.template,

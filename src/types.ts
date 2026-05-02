@@ -8,6 +8,15 @@ export type TemplateAsset = {
   height: number;
 };
 
+export type CustomFont = {
+  id: string;
+  name: string;
+  family: string;
+  mimeType: string;
+  dataUrl?: string;
+  storageKey?: string;
+};
+
 export type CertificateField = {
   id: string;
   label: string;
@@ -42,6 +51,7 @@ export type Project = {
   createdAt: string;
   updatedAt: string;
   template?: TemplateAsset;
+  customFonts?: CustomFont[];
   fields: CertificateField[];
   rows: RecipientRow[];
   columns: string[];
