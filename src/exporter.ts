@@ -102,7 +102,8 @@ export const renderProjectToImage = async (
     project.exportSettings.quality,
     project.exportSettings.maxDimension
   );
-  const effectiveScale = width / sourceWidth;
+  const previewDesignWidth = 760;
+  const fontScale = width / previewDesignWidth;
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -136,7 +137,7 @@ export const renderProjectToImage = async (
     const y = (field.y / 100) * height;
     const boxWidth = (field.width / 100) * width;
     const boxHeight = (field.height / 100) * height;
-    const fontSize = field.fontSize * effectiveScale;
+    const fontSize = field.fontSize * fontScale;
     ctx.font = `${field.weight} ${fontSize}px "${field.fontFamily}", Georgia, serif`;
     ctx.fillStyle = field.color;
     ctx.textAlign = field.align;
