@@ -114,6 +114,21 @@ export const renderProjectToImage = async (
   ctx.fillRect(0, 0, width, height);
   ctx.drawImage(template, 0, 0, width, height);
 
+  for (const logo of project.logoElements || []) {
+    if (!logo.dataUrl) continue;
+    const image = await loadImage(logo.dataUrl);
+    ctx.save();
+    ctx.globalAlpha = logo.opacity ?? 1;
+    ctx.drawImage(
+      image,
+      (logo.x / 100) * width,
+      (logo.y / 100) * height,
+      (logo.width / 100) * width,
+      (logo.height / 100) * height
+    );
+    ctx.restore();
+  }
+
   for (const field of project.fields) {
     const column = project.mappings[field.placeholder] || field.placeholder;
     const value = row.values[column] || row.values[field.placeholder] || `{{${field.placeholder}}}`;

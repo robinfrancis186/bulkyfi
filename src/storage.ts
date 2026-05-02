@@ -63,6 +63,7 @@ export const createProject = (name = "Untitled Certificate"): Project => {
     createdAt: timestamp,
     updatedAt: timestamp,
     customFonts: [],
+    logoElements: [],
     fields: createDefaultFields(),
     rows: [
       {
@@ -94,6 +95,11 @@ const normalizeProject = (project: Project): Project => ({
     ...font,
     storageKey: font.storageKey || font.id
   })),
+  logoElements: (project.logoElements || []).map((logo) => ({
+    ...logo,
+    storageKey: logo.storageKey || logo.id,
+    opacity: logo.opacity ?? 1
+  })),
   exportSettings: {
     ...project.exportSettings,
     maxDimension: project.exportSettings.maxDimension ?? 2400
@@ -112,6 +118,11 @@ const projectForStorage = (project: Project): Project => ({
     ...font,
     dataUrl: undefined,
     storageKey: font.storageKey || font.id
+  })),
+  logoElements: (project.logoElements || []).map((logo) => ({
+    ...logo,
+    dataUrl: undefined,
+    storageKey: logo.storageKey || logo.id
   })),
   template: project.template
     ? {

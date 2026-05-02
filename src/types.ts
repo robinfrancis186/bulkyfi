@@ -17,6 +17,19 @@ export type CustomFont = {
   storageKey?: string;
 };
 
+export type LogoElement = {
+  id: string;
+  name: string;
+  mimeType: string;
+  dataUrl?: string;
+  storageKey?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  opacity: number;
+};
+
 export type CertificateField = {
   id: string;
   label: string;
@@ -52,6 +65,7 @@ export type Project = {
   updatedAt: string;
   template?: TemplateAsset;
   customFonts?: CustomFont[];
+  logoElements?: LogoElement[];
   fields: CertificateField[];
   rows: RecipientRow[];
   columns: string[];

@@ -1,8 +1,9 @@
 const DB_NAME = "bulkyfi-local-assets";
 const LEGACY_DB_NAME = "easycertify-local-assets";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const TEMPLATE_STORE = "templates";
 const FONT_STORE = "fonts";
+const LOGO_STORE = "logos";
 
 const openAssetsDb = (name = DB_NAME) =>
   new Promise<IDBDatabase>((resolve, reject) => {
@@ -14,6 +15,9 @@ const openAssetsDb = (name = DB_NAME) =>
       }
       if (!db.objectStoreNames.contains(FONT_STORE)) {
         db.createObjectStore(FONT_STORE);
+      }
+      if (!db.objectStoreNames.contains(LOGO_STORE)) {
+        db.createObjectStore(LOGO_STORE);
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -69,6 +73,29 @@ export const loadFontData = async (key: string) => {
   const value = await new Promise<string | undefined>((resolve, reject) => {
     const tx = db.transaction(FONT_STORE, "readonly");
     const request = tx.objectStore(FONT_STORE).get(key);
+    request.onsuccess = () => resolve(request.result as string | undefined);
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return value;
+};
+
+export const saveLogoData = async (key: string, dataUrl: string) => {
+  const db = await openAssetsDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(LOGO_STORE, "readwrite");
+    tx.objectStore(LOGO_STORE).put(dataUrl, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+};
+
+export const loadLogoData = async (key: string) => {
+  const db = await openAssetsDb();
+  const value = await new Promise<string | undefined>((resolve, reject) => {
+    const tx = db.transaction(LOGO_STORE, "readonly");
+    const request = tx.objectStore(LOGO_STORE).get(key);
     request.onsuccess = () => resolve(request.result as string | undefined);
     request.onerror = () => reject(request.error);
   });

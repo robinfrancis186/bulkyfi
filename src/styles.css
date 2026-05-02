@@ -791,6 +791,34 @@
   background: transparent;
 }
 
+.certificate-logo {
+  position: absolute;
+  cursor: move;
+  border: 1px dashed transparent;
+  touch-action: none;
+  user-select: none;
+}
+
+.certificate-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.certificate-logo:hover,
+.certificate-logo.selected {
+  border-color: #0071e3;
+  background: rgba(0, 113, 227, .08);
+}
+
+.certificate-logo.readonly {
+  cursor: default;
+  border: none;
+  background: transparent;
+}
+
 .resize-handle {
   position: absolute;
   right: -7px;

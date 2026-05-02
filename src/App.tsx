@@ -22,10 +22,10 @@ import {
 import Papa from "papaparse";
 import { useEffect, useRef, useState } from "react";
 import { downloadBlob, exportSizeForProject, makePdfBlob, renderProjectToImage, renderProjectToPng, zipCertificates } from "./exporter";
-import { loadFontData, loadTemplateData, saveFontData, saveTemplateData } from "./indexedDb";
+import { loadFontData, loadLogoData, loadTemplateData, saveFontData, saveLogoData, saveTemplateData } from "./indexedDb";
 import { createProject, loadProjects, nowIso, saveProjects, uid } from "./storage";
 import { builtInTemplates, type BuiltInTemplate } from "./templateLibrary";
-import type { CertificateField, CustomFont, Project, RecipientRow, TemplateAsset } from "./types";
+import type { CertificateField, CustomFont, LogoElement, Project, RecipientRow, TemplateAsset } from "./types";
 
 const APP_NAME = "BulkyFi";
 const FONT_CHOICES = ["Inter", "Cormorant Garamond", "Georgia", "Arial"];
@@ -39,8 +39,26 @@ type Route =
   | { name: "editor"; id: string };
 
 type DragState =
-  | { mode: "move"; id: string; startX: number; startY: number; canvasWidth: number; canvasHeight: number; original: CertificateField }
-  | { mode: "resize"; id: string; startX: number; startY: number; canvasWidth: number; canvasHeight: number; original: CertificateField };
+  | {
+      mode: "move";
+      kind: "field" | "logo";
+      id: string;
+      startX: number;
+      startY: number;
+      canvasWidth: number;
+      canvasHeight: number;
+      original: { x: number; y: number; width: number; height: number };
+    }
+  | {
+      mode: "resize";
+      kind: "field" | "logo";
+      id: string;
+      startX: number;
+      startY: number;
+      canvasWidth: number;
+      canvasHeight: number;
+      original: { x: number; y: number; width: number; height: number };
+    };
 
 const DEFAULT_TEMPLATE =
   "data:image/svg+xml;charset=utf-8," +
@@ -174,7 +192,14 @@ function App() {
               return dataUrl ? { ...font, dataUrl } : font;
             })
           );
-          return { ...project, template, customFonts };
+          const logoElements = await Promise.all(
+            (project.logoElements || []).map(async (logo) => {
+              if (logo.dataUrl) return logo;
+              const dataUrl = await loadLogoData(logo.storageKey || logo.id);
+              return dataUrl ? { ...logo, dataUrl } : logo;
+            })
+          );
+          return { ...project, template, customFonts, logoElements };
         })
       );
       await Promise.all(
@@ -184,6 +209,9 @@ function App() {
             : Promise.resolve(),
           ...(project.customFonts || []).map((font) =>
             font.dataUrl ? saveFontData(font.storageKey || font.id, font.dataUrl) : Promise.resolve()
+          ),
+          ...(project.logoElements || []).map((logo) =>
+            logo.dataUrl ? saveLogoData(logo.storageKey || logo.id, logo.dataUrl) : Promise.resolve()
           )
         ])
       );
@@ -836,6 +864,7 @@ function EditorPage({
 }) {
   const [tab, setTab] = useState<"design" | "data" | "export">("design");
   const [selectedFieldId, setSelectedFieldId] = useState<string | undefined>(project?.fields[0]?.id);
+  const [selectedLogoId, setSelectedLogoId] = useState<string | undefined>();
   const [selectedRowId, setSelectedRowId] = useState<string | undefined>(project?.rows[0]?.id);
   const [notice, setNotice] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -864,6 +893,7 @@ function EditorPage({
   }
 
   const selectedField = project.fields.find((field) => field.id === selectedFieldId);
+  const selectedLogo = (project.logoElements || []).find((logo) => logo.id === selectedLogoId);
   const selectedRow = project.rows.find((row) => row.id === selectedRowId) || project.rows[0];
   const size = exportSizeForProject(project);
   const missingMappings = project.fields.filter((field) => !project.mappings[field.placeholder]);
@@ -871,6 +901,18 @@ function EditorPage({
   const patchProject = (patch: Partial<Project>) => updateProject({ ...project, ...patch });
   const patchField = (id: string, patch: Partial<CertificateField>) =>
     patchProject({ fields: project.fields.map((field) => (field.id === id ? { ...field, ...patch } : field)) });
+  const patchLogo = (id: string, patch: Partial<LogoElement>) =>
+    patchProject({
+      logoElements: (project.logoElements || []).map((logo) => (logo.id === id ? { ...logo, ...patch } : logo))
+    });
+  const selectField = (id: string) => {
+    setSelectedFieldId(id);
+    setSelectedLogoId(undefined);
+  };
+  const selectLogo = (id?: string) => {
+    setSelectedLogoId(id);
+    if (id) setSelectedFieldId(undefined);
+  };
 
   const renderRow = async (row: RecipientRow) => {
     if (project.exportSettings.format === "pdf") {
@@ -943,10 +985,13 @@ function EditorPage({
               <DesignPanel
                 project={project}
                 selectedField={selectedField}
+                selectedLogo={selectedLogo}
                 setNotice={setNotice}
                 patchProject={patchProject}
                 patchField={patchField}
-                selectField={setSelectedFieldId}
+                patchLogo={patchLogo}
+                selectField={selectField}
+                selectLogo={selectLogo}
               />
             )}
             {tab === "data" && (
@@ -982,8 +1027,11 @@ function EditorPage({
                   project={project}
                   row={selectedRow}
                   selectedFieldId={selectedFieldId}
-                  selectField={setSelectedFieldId}
+                  selectedLogoId={selectedLogoId}
+                  selectField={selectField}
+                  selectLogo={selectLogo}
                   patchField={patchField}
+                  patchLogo={patchLogo}
                 />
               </div>
             </div>
@@ -1099,19 +1147,50 @@ function AppShell({
 function DesignPanel({
   project,
   selectedField,
+  selectedLogo,
   setNotice,
   patchProject,
   patchField,
-  selectField
+  patchLogo,
+  selectField,
+  selectLogo
 }: {
   project: Project;
   selectedField?: CertificateField;
+  selectedLogo?: LogoElement;
   setNotice: (message: string) => void;
   patchProject: (patch: Partial<Project>) => void;
   patchField: (id: string, patch: Partial<CertificateField>) => void;
+  patchLogo: (id: string, patch: Partial<LogoElement>) => void;
   selectField: (id: string) => void;
+  selectLogo: (id?: string) => void;
 }) {
   const availableFonts = fontChoicesForProject(project);
+
+  const uploadLogo = async (file?: File) => {
+    if (!file) return;
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const logo: LogoElement = {
+        id: uid(),
+        name: file.name.replace(/\.[^.]+$/, "") || "Logo",
+        mimeType: file.type || "image/*",
+        dataUrl,
+        storageKey: uid(),
+        x: 43,
+        y: 18,
+        width: 14,
+        height: 14,
+        opacity: 1
+      };
+      await saveLogoData(logo.storageKey || logo.id, dataUrl);
+      patchProject({ logoElements: [...(project.logoElements || []), logo] });
+      selectLogo(logo.id);
+      setNotice(`${logo.name} logo added. Drag it on the certificate to place it.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Logo upload failed.");
+    }
+  };
 
   const uploadFont = async (file?: File) => {
     if (!file) return;
@@ -1234,6 +1313,17 @@ function DesignPanel({
           onChange={(event) => uploadFont(event.target.files?.[0])}
         />
       </label>
+      <label className="upload-box">
+        <ImagePlus size={22} />
+        <span className="font-medium">Add logo or seal</span>
+        <span className="text-xs text-ink-400">Upload PNG, JPG, SVG, or WebP and place it freely.</span>
+        <input
+          className="sr-only"
+          type="file"
+          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+          onChange={(event) => uploadLogo(event.target.files?.[0])}
+        />
+      </label>
       <div>
         <div className="mb-3">
           <h3 className="label">Built-in templates</h3>
@@ -1277,6 +1367,51 @@ function DesignPanel({
           ))}
         </div>
       </div>
+      {(project.logoElements || []).length > 0 && (
+        <div>
+          <div className="mb-3">
+            <span className="label">Logos</span>
+          </div>
+          <div className="space-y-2">
+            {(project.logoElements || []).map((logo) => (
+              <button
+                key={logo.id}
+                className={`field-row ${selectedLogo?.id === logo.id ? "active" : ""}`}
+                onClick={() => selectLogo(logo.id)}
+              >
+                <ImagePlus size={16} />
+                <span>{logo.name}</span>
+                <code>{Math.round(logo.width)}%</code>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {selectedLogo && (
+        <div className="space-y-4 border-t border-ink-100 pt-5">
+          <TextInput label="Logo name" value={selectedLogo.name} onChange={(value) => patchLogo(selectedLogo.id, { name: value })} />
+          <div className="grid grid-cols-2 gap-3">
+            <NumberInput label="Width" value={Math.round(selectedLogo.width)} min={4} max={70} onChange={(value) => patchLogo(selectedLogo.id, { width: value })} />
+            <NumberInput label="Height" value={Math.round(selectedLogo.height)} min={4} max={70} onChange={(value) => patchLogo(selectedLogo.id, { height: value })} />
+          </div>
+          <NumberInput
+            label="Opacity"
+            value={Math.round((selectedLogo.opacity ?? 1) * 100)}
+            min={10}
+            max={100}
+            onChange={(value) => patchLogo(selectedLogo.id, { opacity: value / 100 })}
+          />
+          <button
+            className="btn-danger w-full"
+            onClick={() => {
+              patchProject({ logoElements: (project.logoElements || []).filter((logo) => logo.id !== selectedLogo.id) });
+              selectLogo(undefined);
+            }}
+          >
+            <Trash2 size={16} /> Delete logo
+          </button>
+        </div>
+      )}
       {selectedField && (
         <div className="space-y-4 border-t border-ink-100 pt-5">
           <TextInput label="Label" value={selectedField.label} onChange={(value) => patchField(selectedField.id, { label: value })} />
@@ -1573,15 +1708,21 @@ function CertificatePreview({
   project,
   row,
   selectedFieldId,
+  selectedLogoId,
   selectField,
+  selectLogo,
   patchField,
+  patchLogo,
   readonly
 }: {
   project: Project;
   row?: RecipientRow;
   selectedFieldId?: string;
+  selectedLogoId?: string;
   selectField?: (id: string) => void;
+  selectLogo?: (id: string) => void;
   patchField?: (id: string, patch: Partial<CertificateField>) => void;
+  patchLogo?: (id: string, patch: Partial<LogoElement>) => void;
   readonly?: boolean;
 }) {
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -1599,19 +1740,21 @@ function CertificatePreview({
   }, []);
 
   useEffect(() => {
-    if (!dragState || readonly || !patchField) return;
+    if (!dragState || readonly) return;
     const move = (event: PointerEvent) => {
       const dx = ((event.clientX - dragState.startX) / dragState.canvasWidth) * 100;
       const dy = ((event.clientY - dragState.startY) / dragState.canvasHeight) * 100;
+      const patch = dragState.kind === "field" ? patchField : patchLogo;
+      if (!patch) return;
       if (dragState.mode === "move") {
-        patchField(dragState.id, {
+        patch(dragState.id, {
           x: Math.min(96, Math.max(0, dragState.original.x + dx)),
           y: Math.min(96, Math.max(0, dragState.original.y + dy))
         });
       } else {
-        patchField(dragState.id, {
+        patch(dragState.id, {
           width: Math.min(90, Math.max(8, dragState.original.width + dx)),
-          height: Math.min(30, Math.max(3, dragState.original.height + dy))
+          height: Math.min(dragState.kind === "logo" ? 70 : 30, Math.max(3, dragState.original.height + dy))
         });
       }
     };
@@ -1622,7 +1765,7 @@ function CertificatePreview({
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
-  }, [dragState, patchField, readonly]);
+  }, [dragState, patchField, patchLogo, readonly]);
 
   const valueForField = (field: CertificateField) => {
     const column = project.mappings[field.placeholder] || field.placeholder;
@@ -1641,6 +1784,54 @@ function CertificatePreview({
   return (
     <div className="certificate-canvas" ref={canvasRef}>
       <img src={project.template?.dataUrl || DEFAULT_TEMPLATE} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      {(project.logoElements || []).map((logo) => (
+        <div
+          key={logo.id}
+          className={`certificate-logo ${selectedLogoId === logo.id ? "selected" : ""} ${readonly ? "readonly" : ""}`}
+          style={{
+            left: `${logo.x}%`,
+            top: `${logo.y}%`,
+            width: `${logo.width}%`,
+            height: `${logo.height}%`,
+            opacity: logo.opacity ?? 1
+          }}
+          onPointerDown={(event) => {
+            if (readonly) return;
+            event.preventDefault();
+            selectLogo?.(logo.id);
+            setDragState({
+              mode: "move",
+              kind: "logo",
+              id: logo.id,
+              startX: event.clientX,
+              startY: event.clientY,
+              ...dragMetrics(event.currentTarget),
+              original: logo
+            });
+          }}
+        >
+          <img src={logo.dataUrl} alt="" />
+          {!readonly && selectedLogoId === logo.id && (
+            <button
+              className="resize-handle"
+              aria-label={`Resize ${logo.name}`}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setDragState({
+                  mode: "resize",
+                  kind: "logo",
+                  id: logo.id,
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  ...dragMetrics(event.currentTarget),
+                  original: logo
+                });
+              }}
+            />
+          )}
+        </div>
+      ))}
       {project.fields.map((field) => (
         <div
           key={field.id}
@@ -1663,6 +1854,7 @@ function CertificatePreview({
             selectField?.(field.id);
             setDragState({
               mode: "move",
+              kind: "field",
               id: field.id,
               startX: event.clientX,
               startY: event.clientY,
@@ -1681,6 +1873,7 @@ function CertificatePreview({
                 event.stopPropagation();
                 setDragState({
                   mode: "resize",
+                  kind: "field",
                   id: field.id,
                   startX: event.clientX,
                   startY: event.clientY,
