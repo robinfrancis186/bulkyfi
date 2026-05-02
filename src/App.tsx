@@ -447,12 +447,31 @@ function Footer() {
     <footer className="footer-glass border-t border-ink-100 bg-white py-12">
       <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-8 px-6 md:flex-row">
         <Brand compact />
-        <div className="text-sm text-ink-500">© 2026 {APP_NAME}. All rights reserved.</div>
-        <div className="text-[10px] font-medium text-ink-500">
-          Local-first rebuild for certificate generation.
+        <div className="text-center text-sm text-ink-500 md:text-left">© 2026 {APP_NAME}. All rights reserved.</div>
+        <div className="flex flex-col items-center gap-3 md:items-end">
+          <SupportBadge />
+          <div className="text-center text-[10px] font-medium text-ink-500 md:text-right">
+            Local-first rebuild for certificate generation.
+          </div>
         </div>
       </div>
     </footer>
+  );
+}
+
+function SupportBadge() {
+  return (
+    <a
+      className="chai-support"
+      href="https://chai4.me/robin"
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Support robin on Chai4Me"
+      aria-label="Support robin on Chai4Me"
+    >
+      <img src="https://chai4.me/icons/wordmark.png" alt="Chai4Me" />
+      <span>@robin</span>
+    </a>
   );
 }
 
