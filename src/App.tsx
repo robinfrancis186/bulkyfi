@@ -7,7 +7,6 @@ import {
   FolderOpen,
   History,
   ImagePlus,
-  LayoutDashboard,
   LogOut,
   MousePointer2,
   PanelsTopLeft,
@@ -29,11 +28,14 @@ import { builtInTemplates, type BuiltInTemplate } from "./templateLibrary";
 import type { CertificateField, Project, RecipientRow, TemplateAsset } from "./types";
 
 const APP_NAME = "BulkyFi";
+const FONT_CHOICES = ["Inter", "Cormorant Garamond", "Georgia", "Arial"];
 
 type Route =
   | { name: "landing" }
   | { name: "login" }
   | { name: "dashboard" }
+  | { name: "history" }
+  | { name: "fonts" }
   | { name: "editor"; id: string };
 
 type DragState =
@@ -75,6 +77,8 @@ const routeFromPath = (): Route => {
   const path = window.location.pathname;
   if (path === "/login" || path === "/auth/login") return { name: "login" };
   if (path === "/dashboard") return { name: "dashboard" };
+  if (path === "/history") return { name: "history" };
+  if (path === "/fonts") return { name: "fonts" };
   const editorMatch = path.match(/^\/editor\/([^/]+)/);
   if (editorMatch) return { name: "editor", id: editorMatch[1] };
   return { name: "landing" };
@@ -83,6 +87,8 @@ const routeFromPath = (): Route => {
 const pathFromRoute = (route: Route) => {
   if (route.name === "login") return "/login";
   if (route.name === "dashboard") return "/dashboard";
+  if (route.name === "history") return "/history";
+  if (route.name === "fonts") return "/fonts";
   if (route.name === "editor") return `/editor/${route.id}`;
   return "/";
 };
@@ -206,6 +212,25 @@ function App() {
         isAuthed={isAuthed}
         projects={projects}
         createProject={createAndOpenProject}
+        navigate={navigate}
+        signOut={signOut}
+      />
+    );
+  if (route.name === "history")
+    return (
+      <HistoryPage
+        isAuthed={isAuthed}
+        projects={projects}
+        navigate={navigate}
+        signOut={signOut}
+      />
+    );
+  if (route.name === "fonts")
+    return (
+      <FontsPage
+        isAuthed={isAuthed}
+        projects={projects}
+        updateProject={updateProject}
         navigate={navigate}
         signOut={signOut}
       />
@@ -426,7 +451,7 @@ function Dashboard({
 
   return (
     <div className="app-page min-h-screen">
-      <AppShell signOut={signOut} navigate={navigate} />
+      <AppShell active="dashboard" signOut={signOut} navigate={navigate} />
       <main className="workspace-main mx-auto max-w-7xl px-6 py-10">
         <section className="mb-10 grid gap-6 lg:grid-cols-[1fr_360px]">
           <div>
@@ -535,6 +560,174 @@ function Dashboard({
   );
 }
 
+function HistoryPage({
+  isAuthed,
+  projects,
+  navigate,
+  signOut
+}: {
+  isAuthed: boolean;
+  projects: Project[];
+  navigate: (route: Route) => void;
+  signOut: () => void;
+}) {
+  if (!isAuthed) return <AuthRedirect navigate={navigate} />;
+  const orderedProjects = [...projects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+  return (
+    <div className="app-page min-h-screen">
+      <AppShell active="history" signOut={signOut} navigate={navigate} />
+      <main className="workspace-main mx-auto max-w-6xl px-6 py-10">
+        <section className="mb-8">
+          <p className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-gold-600">Workspace history</p>
+          <h1 className="font-display text-5xl text-ink-900">Recent activity</h1>
+          <p className="mt-4 max-w-2xl text-ink-500">
+            Review your certificate projects, update times, template status, and batch size.
+          </p>
+        </section>
+
+        {orderedProjects.length === 0 ? (
+          <div className="empty-state rounded-[32px] border border-dashed border-ink-200 bg-white p-12 text-center shadow-soft">
+            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-3xl bg-ink-900 text-gold-500">
+              <History size={30} />
+            </div>
+            <h2 className="font-display text-3xl text-ink-900">No history yet</h2>
+            <p className="mx-auto mt-3 max-w-xl text-ink-500">
+              Create a project or update a certificate to see it here.
+            </p>
+            <button className="btn-gold mt-8 px-8 py-3" onClick={() => navigate({ name: "dashboard" })}>
+              Go to dashboard
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {orderedProjects.map((project) => (
+              <button
+                key={project.id}
+                className="history-row"
+                onClick={() => navigate({ name: "editor", id: project.id })}
+              >
+                <span className="history-icon">
+                  <FileText size={20} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate font-display text-xl text-ink-900">{project.name}</span>
+                  <span className="mt-1 block text-sm text-ink-500">
+                    Updated {formatDate(project.updatedAt)} · {project.rows.length} recipient{project.rows.length === 1 ? "" : "s"} · {project.fields.length} placeholders
+                  </span>
+                </span>
+                <span className="history-meta">
+                  {project.template?.name || "Default template"} · {project.exportSettings.format.toUpperCase()}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function FontsPage({
+  isAuthed,
+  projects,
+  updateProject,
+  navigate,
+  signOut
+}: {
+  isAuthed: boolean;
+  projects: Project[];
+  updateProject: (project: Project) => void;
+  navigate: (route: Route) => void;
+  signOut: () => void;
+}) {
+  const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id || "");
+  const selectedProject = projects.find((project) => project.id === selectedProjectId) || projects[0];
+
+  useEffect(() => {
+    if (!selectedProjectId && projects[0]) setSelectedProjectId(projects[0].id);
+  }, [projects, selectedProjectId]);
+
+  if (!isAuthed) return <AuthRedirect navigate={navigate} />;
+
+  const applyFont = (fontFamily: string) => {
+    if (!selectedProject) return;
+    updateProject({
+      ...selectedProject,
+      fields: selectedProject.fields.map((field) => ({ ...field, fontFamily }))
+    });
+  };
+
+  return (
+    <div className="app-page min-h-screen">
+      <AppShell active="fonts" signOut={signOut} navigate={navigate} />
+      <main className="workspace-main mx-auto max-w-6xl px-6 py-10">
+        <section className="mb-8">
+          <p className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-gold-600">Fonts</p>
+          <h1 className="font-display text-5xl text-ink-900">Project typography</h1>
+          <p className="mt-4 max-w-2xl text-ink-500">
+            Preview supported certificate fonts and apply one across all placeholders in a project.
+          </p>
+        </section>
+
+        <div className="overview-panel rounded-[28px] border border-ink-100 bg-white p-6 shadow-soft">
+          <div className="mb-6 grid gap-4 md:grid-cols-[1fr_280px] md:items-end">
+            <div>
+              <h2 className="section-title">Available fonts</h2>
+              <p className="section-sub">These fonts are available in the certificate editor and exports.</p>
+            </div>
+            <label>
+              <span className="label">Apply to project</span>
+              <select
+                className="input mt-2"
+                value={selectedProject?.id || ""}
+                onChange={(event) => setSelectedProjectId(event.target.value)}
+              >
+                {projects.length === 0 && <option value="">No projects yet</option>}
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            {FONT_CHOICES.map((font) => (
+              <button
+                key={font}
+                className="font-card"
+                onClick={() => applyFont(font)}
+                disabled={!selectedProject}
+              >
+                <span className="text-sm font-bold text-ink-500">{font}</span>
+                <span className="mt-3 block text-3xl text-ink-900" style={{ fontFamily: font }}>
+                  Certificate Preview
+                </span>
+                <span className="mt-2 block text-sm text-ink-400" style={{ fontFamily: font }}>
+                  Names, courses, dates, and signatures.
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {selectedProject && (
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-parchment-100 px-4 py-3">
+              <span className="text-sm text-ink-500">
+                Editing fonts for <b className="text-ink-900">{selectedProject.name}</b>
+              </span>
+              <button className="btn-primary py-2 text-sm" onClick={() => navigate({ name: "editor", id: selectedProject.id })}>
+                Open editor
+              </button>
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
+
 function EditorPage({
   isAuthed,
   project,
@@ -566,7 +759,7 @@ function EditorPage({
   if (!project) {
     return (
       <div className="app-page min-h-screen">
-        <AppShell signOut={signOut} navigate={navigate} />
+        <AppShell active="editor" signOut={signOut} navigate={navigate} />
         <main className="workspace-main mx-auto max-w-3xl px-6 py-16 text-center">
           <h1 className="font-display text-4xl text-ink-900">Project not found</h1>
           <button className="btn-primary mt-8" onClick={() => navigate({ name: "dashboard" })}>
@@ -627,7 +820,7 @@ function EditorPage({
 
   return (
     <div className="app-page min-h-screen">
-      <AppShell signOut={signOut} navigate={navigate} />
+      <AppShell active="editor" signOut={signOut} navigate={navigate} />
       <main className="workspace-main mx-auto max-w-[1500px] px-5 py-6">
         <div className="command-bar mb-5 flex flex-col justify-between gap-4 rounded-2xl border border-ink-100 bg-white p-4 shadow-soft lg:flex-row lg:items-center">
           <div>
@@ -761,7 +954,15 @@ function HowStep({ number, title, body }: { number: string; title: string; body:
   );
 }
 
-function AppShell({ signOut, navigate }: { signOut: () => void; navigate: (route: Route) => void }) {
+function AppShell({
+  active,
+  signOut,
+  navigate
+}: {
+  active?: Route["name"];
+  signOut: () => void;
+  navigate: (route: Route) => void;
+}) {
   return (
     <aside className="workspace-sidebar">
       <div>
@@ -773,31 +974,21 @@ function AppShell({ signOut, navigate }: { signOut: () => void; navigate: (route
           <span>Personal</span>
         </button>
         <nav className="sidebar-nav" aria-label="Workspace navigation">
-          <button className="active" onClick={() => navigate({ name: "dashboard" })}>
-            <LayoutDashboard size={17} /> Overview
-          </button>
           <button onClick={() => navigate({ name: "dashboard" })}>
             <FileText size={17} /> Templates
           </button>
           <button onClick={() => navigate({ name: "dashboard" })}>
             <Award size={17} /> Generate
           </button>
-          <button onClick={() => navigate({ name: "dashboard" })}>
-            <Upload size={17} /> Bulk Import
-          </button>
-          <button onClick={() => navigate({ name: "dashboard" })}>
+          <button className={active === "history" ? "active" : ""} onClick={() => navigate({ name: "history" })}>
             <History size={17} /> History
           </button>
-          <button onClick={() => navigate({ name: "dashboard" })}>
+          <button className={active === "fonts" ? "active" : ""} onClick={() => navigate({ name: "fonts" })}>
             <Type size={17} /> Fonts
           </button>
         </nav>
       </div>
       <div className="sidebar-footer">
-        <div className="sidebar-status">
-          <Sparkles size={16} />
-          <span>Local-first workspace</span>
-        </div>
         <button className="sidebar-profile" onClick={signOut}>
           <span className="avatar">B</span>
           <span>
