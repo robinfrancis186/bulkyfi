@@ -6,9 +6,13 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          pdf: ["jspdf", "pdfjs-dist"],
-          archive: ["jszip", "papaparse"]
+        manualChunks(id) {
+          if (id.includes("node_modules/jspdf") || id.includes("node_modules/pdfjs-dist")) {
+            return "pdf";
+          }
+          if (id.includes("node_modules/jszip") || id.includes("node_modules/papaparse")) {
+            return "archive";
+          }
         }
       }
     }
