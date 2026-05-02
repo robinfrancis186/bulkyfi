@@ -25,6 +25,7 @@ import { useEffect, useState } from "react";
 import { downloadBlob, exportSizeForProject, makePdfBlob, renderProjectToImage, renderProjectToPng, zipCertificates } from "./exporter";
 import { loadTemplateData, saveTemplateData } from "./indexedDb";
 import { createProject, loadProjects, nowIso, saveProjects, uid } from "./storage";
+import { builtInTemplates, type BuiltInTemplate } from "./templateLibrary";
 import type { CertificateField, Project, RecipientRow, TemplateAsset } from "./types";
 
 const APP_NAME = "BulkyFi";
@@ -106,6 +107,19 @@ const fileToDataUrl = (file: File) =>
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+
+const urlToDataUrl = async (url: string) => {
+  const blob = await fetch(url).then((response) => {
+    if (!response.ok) throw new Error("Template could not be loaded.");
+    return response.blob();
+  });
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
 
 function App() {
   const [route, setRoute] = useState<Route>(routeFromPath);
@@ -841,6 +855,27 @@ function DesignPanel({
     }
   };
 
+  const applyBuiltInTemplate = async (template: BuiltInTemplate) => {
+    try {
+      const dataUrl = await urlToDataUrl(template.url);
+      const size = await getImageSize(dataUrl);
+      const asset: TemplateAsset = {
+        id: uid(),
+        name: template.name,
+        mimeType: "image/png",
+        dataUrl,
+        storageKey: uid(),
+        width: size.width,
+        height: size.height
+      };
+      await saveTemplateData(asset.storageKey || asset.id, dataUrl);
+      setNotice(`${template.name} template applied.`);
+      patchProject({ template: asset });
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Template could not be applied.");
+    }
+  };
+
   const addField = () => {
     const field: CertificateField = {
       id: uid(),
@@ -877,6 +912,28 @@ function DesignPanel({
           onChange={(event) => uploadTemplate(event.target.files?.[0])}
         />
       </label>
+      <div>
+        <div className="mb-3">
+          <h3 className="label">Built-in templates</h3>
+          <p className="mt-1 text-xs text-ink-400">Use one when you do not have a certificate design yet.</p>
+        </div>
+        <div className="template-grid">
+          {builtInTemplates.map((template) => (
+            <button
+              key={template.id}
+              type="button"
+              className={`template-tile ${project.template?.name === template.name ? "active" : ""}`}
+              onClick={() => applyBuiltInTemplate(template)}
+            >
+              <span className="template-thumb">
+                <img src={template.url} alt="" loading="lazy" />
+              </span>
+              <span className="template-name">{template.name}</span>
+              <span className="template-description">{template.description}</span>
+            </button>
+          ))}
+        </div>
+      </div>
       <div>
         <div className="mb-3 flex items-center justify-between">
           <span className="label">Placeholders</span>
