@@ -2,7 +2,10 @@ import {
   Award,
   CheckCircle2,
   Download,
+  FileText,
   FileSpreadsheet,
+  FolderOpen,
+  History,
   ImagePlus,
   LayoutDashboard,
   LogOut,
@@ -23,6 +26,8 @@ import { downloadBlob, exportSizeForProject, makePdfBlob, renderProjectToImage, 
 import { loadTemplateData, saveTemplateData } from "./indexedDb";
 import { createProject, loadProjects, nowIso, saveProjects, uid } from "./storage";
 import type { CertificateField, Project, RecipientRow, TemplateAsset } from "./types";
+
+const APP_NAME = "BulkyFi";
 
 type Route =
   | { name: "landing" }
@@ -105,7 +110,11 @@ const fileToDataUrl = (file: File) =>
 function App() {
   const [route, setRoute] = useState<Route>(routeFromPath);
   const [projects, setProjects] = useState<Project[]>(loadProjects);
-  const [isAuthed, setIsAuthed] = useState(() => localStorage.getItem("easycertify.local.session") === "true");
+  const [isAuthed, setIsAuthed] = useState(
+    () =>
+      localStorage.getItem("bulkyfi.local.session") === "true" ||
+      localStorage.getItem("easycertify.local.session") === "true"
+  );
   const [templatesReady, setTemplatesReady] = useState(false);
 
   useEffect(() => {
@@ -164,12 +173,13 @@ function App() {
   };
 
   const signIn = () => {
-    localStorage.setItem("easycertify.local.session", "true");
+    localStorage.setItem("bulkyfi.local.session", "true");
     setIsAuthed(true);
     navigate({ name: "dashboard" });
   };
 
   const signOut = () => {
+    localStorage.removeItem("bulkyfi.local.session");
     localStorage.removeItem("easycertify.local.session");
     setIsAuthed(false);
     navigate({ name: "landing" });
@@ -208,7 +218,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
         <Award size={compact ? 18 : 24} />
       </div>
       <span className={`${compact ? "text-xl" : "text-2xl"} font-display font-bold text-ink-900`}>
-        Certify
+        {APP_NAME}
       </span>
     </div>
   );
@@ -233,7 +243,7 @@ function LandingPage({ navigate }: { navigate: (route: Route) => void }) {
               <CheckCircle2 size={12} /> Engineered for batch precision
             </div>
             <h1 className="hero-title mb-8 font-display text-6xl leading-[1.02] text-ink-900 xl:text-7xl">
-              Certificates at scale. <span>Designed to feel instant.</span>
+              Bulk certificates. <span>Designed to feel instant.</span>
             </h1>
             <p className="mb-10 max-w-xl text-lg leading-relaxed text-ink-500">
               Turn your spreadsheets into thousands of high-fidelity certificates in seconds. Perfect
@@ -342,7 +352,7 @@ function Footer() {
     <footer className="footer-glass border-t border-ink-100 bg-white py-12">
       <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-8 px-6 md:flex-row">
         <Brand compact />
-        <div className="text-sm text-ink-500">© 2026 Certify. All rights reserved.</div>
+        <div className="text-sm text-ink-500">© 2026 {APP_NAME}. All rights reserved.</div>
         <div className="text-[10px] font-medium text-ink-500">
           Local-first rebuild for certificate generation.
         </div>
@@ -363,7 +373,7 @@ function LoginPage({ onSignIn, navigate }: { onSignIn: () => void; navigate: (ro
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-ink-900 to-ink-800 text-gold-500 shadow-medium">
               <CreditCardIcon />
             </div>
-            <h1 className="font-display text-4xl font-medium tracking-tight text-ink-900">Certify</h1>
+            <h1 className="font-display text-4xl font-medium tracking-tight text-ink-900">{APP_NAME}</h1>
             <p className="mt-2 text-sm text-ink-500">Professional certificate generation</p>
           </div>
           <div className="rounded-2xl border border-ink-100/60 bg-white/90 p-8 shadow-strong backdrop-blur-sm">
@@ -377,7 +387,7 @@ function LoginPage({ onSignIn, navigate }: { onSignIn: () => void; navigate: (ro
               Continue locally
             </button>
           </div>
-          <p className="mt-6 text-center text-xs text-ink-400">© 2026 Certify</p>
+          <p className="mt-6 text-center text-xs text-ink-400">© 2026 {APP_NAME}</p>
         </div>
       </div>
     </div>
@@ -403,13 +413,13 @@ function Dashboard({
   return (
     <div className="app-page min-h-screen">
       <AppShell signOut={signOut} navigate={navigate} />
-      <main className="mx-auto max-w-7xl px-6 py-10">
+      <main className="workspace-main mx-auto max-w-7xl px-6 py-10">
         <section className="mb-10 grid gap-6 lg:grid-cols-[1fr_360px]">
           <div>
             <p className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-gold-600">Workspace</p>
-            <h1 className="font-display text-5xl text-ink-900">Certificate projects</h1>
+            <h1 className="font-display text-5xl text-ink-900">Welcome to {APP_NAME}</h1>
             <p className="mt-4 max-w-2xl text-ink-500">
-              Design once, map your data, and export every certificate from this browser.
+              Generate beautiful, professional certificates in minutes.
             </p>
           </div>
           <div className="control-card rounded-2xl border border-ink-100 bg-white p-5 shadow-soft">
@@ -434,6 +444,36 @@ function Dashboard({
           </div>
         </section>
 
+        <div className="mb-10 grid gap-5 lg:grid-cols-3">
+          <DashboardAction
+            icon={<Award size={22} />}
+            title="Generate Certificates"
+            body="Create certificates from your templates"
+            onClick={() => createProject("Certificate Batch")}
+          />
+          <DashboardAction
+            icon={<FileText size={22} />}
+            title="Manage Templates"
+            body="Upload and configure certificate templates"
+            onClick={() => (projects[0] ? navigate({ name: "editor", id: projects[0].id }) : createProject("Template Setup"))}
+          />
+          <DashboardAction
+            icon={<Type size={22} />}
+            title="Bulk Import"
+            body="Map CSV rows and preview every recipient"
+            onClick={() => (projects[0] ? navigate({ name: "editor", id: projects[0].id }) : createProject("Bulk Import"))}
+          />
+        </div>
+        <section className="overview-panel mb-10 rounded-[28px] border border-ink-100 bg-white p-8 shadow-soft">
+          <h2 className="font-display text-3xl text-ink-900">How it works</h2>
+          <div className="mt-8 grid gap-6 md:grid-cols-2">
+            <HowStep number="01" title="Upload a template" body="Add your certificate background as PNG, JPG, SVG, or PDF." />
+            <HowStep number="02" title="Configure placement" body="Set where names and descriptions appear, choose fonts and styling." />
+            <HowStep number="03" title="Enter names" body="Type names manually or upload a CSV for bulk generation." />
+            <HowStep number="04" title="Preview & Download" body="Preview each certificate, then export as PNG, PDF, or ZIP." />
+          </div>
+        </section>
+
         {projects.length === 0 ? (
           <div className="empty-state rounded-[32px] border border-dashed border-ink-200 bg-white p-12 text-center shadow-soft">
             <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-3xl bg-ink-900 text-gold-500">
@@ -449,32 +489,32 @@ function Dashboard({
           </div>
         ) : (
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {projects.map((project) => (
-              <button
-                key={project.id}
-                className="project-card group rounded-2xl border border-ink-100 bg-white p-5 text-left shadow-soft transition-all hover:-translate-y-1 hover:shadow-medium"
-                onClick={() => navigate({ name: "editor", id: project.id })}
-              >
-                <div className="mb-5 overflow-hidden rounded-xl border border-ink-100 bg-parchment-100">
-                  <div className="aspect-[1.414/1]">
-                    <CertificatePreview project={project} row={project.rows[0]} readonly />
+              {projects.map((project) => (
+                <button
+                  key={project.id}
+                  className="project-card group rounded-2xl border border-ink-100 bg-white p-5 text-left shadow-soft transition-all hover:-translate-y-1 hover:shadow-medium"
+                  onClick={() => navigate({ name: "editor", id: project.id })}
+                >
+                  <div className="mb-5 overflow-hidden rounded-xl border border-ink-100 bg-parchment-100">
+                    <div className="aspect-[1.414/1]">
+                      <CertificatePreview project={project} row={project.rows[0]} readonly />
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="font-display text-2xl text-ink-900">{project.name}</h2>
-                    <p className="mt-1 text-sm text-ink-500">
-                      {project.rows.length} recipient{project.rows.length === 1 ? "" : "s"} · {project.fields.length} fields
-                    </p>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h2 className="font-display text-2xl text-ink-900">{project.name}</h2>
+                      <p className="mt-1 text-sm text-ink-500">
+                        {project.rows.length} recipient{project.rows.length === 1 ? "" : "s"} · {project.fields.length} fields
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-parchment-100 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-ink-500">
+                      {project.exportSettings.format}
+                    </span>
                   </div>
-                  <span className="rounded-full bg-parchment-100 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-ink-500">
-                    {project.exportSettings.format}
-                  </span>
-                </div>
-                <p className="mt-5 text-xs text-ink-400">Updated {formatDate(project.updatedAt)}</p>
-              </button>
-            ))}
-          </div>
+                  <p className="mt-5 text-xs text-ink-400">Updated {formatDate(project.updatedAt)}</p>
+                </button>
+              ))}
+            </div>
         )}
       </main>
     </div>
@@ -513,7 +553,7 @@ function EditorPage({
     return (
       <div className="app-page min-h-screen">
         <AppShell signOut={signOut} navigate={navigate} />
-        <main className="mx-auto max-w-3xl px-6 py-16 text-center">
+        <main className="workspace-main mx-auto max-w-3xl px-6 py-16 text-center">
           <h1 className="font-display text-4xl text-ink-900">Project not found</h1>
           <button className="btn-primary mt-8" onClick={() => navigate({ name: "dashboard" })}>
             Back to dashboard
@@ -574,7 +614,7 @@ function EditorPage({
   return (
     <div className="app-page min-h-screen">
       <AppShell signOut={signOut} navigate={navigate} />
-      <main className="mx-auto max-w-[1500px] px-5 py-6">
+      <main className="workspace-main mx-auto max-w-[1500px] px-5 py-6">
         <div className="command-bar mb-5 flex flex-col justify-between gap-4 rounded-2xl border border-ink-100 bg-white p-4 shadow-soft lg:flex-row lg:items-center">
           <div>
             <input
@@ -672,23 +712,88 @@ function AuthRedirect({ navigate }: { navigate: (route: Route) => void }) {
   );
 }
 
+function DashboardAction({
+  icon,
+  title,
+  body,
+  onClick
+}: {
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+  onClick: () => void;
+}) {
+  return (
+    <button className="dashboard-action group text-left" onClick={onClick}>
+      <span className="dashboard-action-icon">{icon}</span>
+      <span className="mt-6 block font-display text-xl text-ink-900">{title}</span>
+      <span className="mt-2 block text-sm leading-relaxed text-ink-500">{body}</span>
+      <span className="mt-6 block text-sm font-medium text-gold-600">Get started →</span>
+    </button>
+  );
+}
+
+function HowStep({ number, title, body }: { number: string; title: string; body: string }) {
+  return (
+    <div className="flex gap-4">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink-900 text-xs font-bold text-white">
+        {number}
+      </span>
+      <div>
+        <h3 className="font-semibold text-ink-900">{title}</h3>
+        <p className="mt-1 text-sm leading-relaxed text-ink-500">{body}</p>
+      </div>
+    </div>
+  );
+}
+
 function AppShell({ signOut, navigate }: { signOut: () => void; navigate: (route: Route) => void }) {
   return (
-    <header className="workspace-header sticky top-0 z-40">
-      <div className="mx-auto flex h-16 max-w-[1500px] items-center justify-between px-5">
-        <button onClick={() => navigate({ name: "dashboard" })} aria-label="Go to dashboard">
+    <aside className="workspace-sidebar">
+      <div>
+        <button className="sidebar-brand" onClick={() => navigate({ name: "dashboard" })} aria-label="Go to dashboard">
           <Brand compact />
         </button>
-        <nav className="flex items-center gap-2">
-          <button className="btn-outline py-2 text-sm" onClick={() => navigate({ name: "dashboard" })}>
-            <LayoutDashboard size={16} /> Dashboard
+        <button className="workspace-switch" onClick={() => navigate({ name: "dashboard" })}>
+          <FolderOpen size={16} />
+          <span>Personal</span>
+        </button>
+        <nav className="sidebar-nav" aria-label="Workspace navigation">
+          <button className="active" onClick={() => navigate({ name: "dashboard" })}>
+            <LayoutDashboard size={17} /> Overview
           </button>
-          <button className="btn-primary py-2 text-sm" onClick={signOut}>
-            <LogOut size={16} /> Sign out
+          <button onClick={() => navigate({ name: "dashboard" })}>
+            <FileText size={17} /> Templates
+          </button>
+          <button onClick={() => navigate({ name: "dashboard" })}>
+            <Award size={17} /> Generate
+          </button>
+          <button onClick={() => navigate({ name: "dashboard" })}>
+            <Upload size={17} /> Bulk Import
+          </button>
+          <button onClick={() => navigate({ name: "dashboard" })}>
+            <History size={17} /> History
+          </button>
+          <button onClick={() => navigate({ name: "dashboard" })}>
+            <Type size={17} /> Fonts
           </button>
         </nav>
       </div>
-    </header>
+      <div className="sidebar-footer">
+        <div className="sidebar-status">
+          <Sparkles size={16} />
+          <span>Local-first workspace</span>
+        </div>
+        <button className="sidebar-profile" onClick={signOut}>
+          <span className="avatar">B</span>
+          <span>
+            <b>{APP_NAME}</b>
+            <small>Sign out</small>
+          </span>
+          <LogOut size={16} />
+        </button>
+      </div>
+    </aside>
   );
 }
 

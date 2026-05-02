@@ -1,6 +1,7 @@
 import type { CertificateField, Project } from "./types";
 
-const STORAGE_KEY = "easycertify.local.projects.v1";
+const STORAGE_KEY = "bulkyfi.local.projects.v1";
+const LEGACY_STORAGE_KEY = "easycertify.local.projects.v1";
 
 export const uid = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -113,7 +114,7 @@ const projectForStorage = (project: Project): Project => ({
 
 export const loadProjects = (): Project[] => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
     if (!raw) return [];
     const projects = JSON.parse(raw) as Project[];
     return Array.isArray(projects) ? projects.map(normalizeProject) : [];

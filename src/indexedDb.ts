@@ -1,10 +1,11 @@
-const DB_NAME = "easycertify-local-assets";
+const DB_NAME = "bulkyfi-local-assets";
+const LEGACY_DB_NAME = "easycertify-local-assets";
 const DB_VERSION = 1;
 const STORE_NAME = "templates";
 
-const openAssetsDb = () =>
+const openAssetsDb = (name = DB_NAME) =>
   new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    const request = indexedDB.open(name, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -35,5 +36,15 @@ export const loadTemplateData = async (key: string) => {
     request.onerror = () => reject(request.error);
   });
   db.close();
-  return value;
+  if (value) return value;
+
+  const legacyDb = await openAssetsDb(LEGACY_DB_NAME);
+  const legacyValue = await new Promise<string | undefined>((resolve, reject) => {
+    const tx = legacyDb.transaction(STORE_NAME, "readonly");
+    const request = tx.objectStore(STORE_NAME).get(key);
+    request.onsuccess = () => resolve(request.result as string | undefined);
+    request.onerror = () => reject(request.error);
+  });
+  legacyDb.close();
+  return legacyValue;
 };
