@@ -80,22 +80,48 @@ export const createProject = (name = "Untitled Certificate"): Project => {
     },
     exportSettings: {
       format: "pdf",
-      quality: 2
+      quality: 1.5,
+      maxDimension: 2400
     }
   };
 };
+
+const normalizeProject = (project: Project): Project => ({
+  ...project,
+  exportSettings: {
+    ...project.exportSettings,
+    maxDimension: project.exportSettings.maxDimension ?? 2400
+  },
+  template: project.template
+    ? {
+        ...project.template,
+        storageKey: project.template.storageKey || project.template.id
+      }
+    : undefined
+});
+
+const projectForStorage = (project: Project): Project => ({
+  ...project,
+  template: project.template
+    ? {
+        ...project.template,
+        dataUrl: undefined,
+        storageKey: project.template.storageKey || project.template.id
+      }
+    : undefined
+});
 
 export const loadProjects = (): Project[] => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const projects = JSON.parse(raw) as Project[];
-    return Array.isArray(projects) ? projects : [];
+    return Array.isArray(projects) ? projects.map(normalizeProject) : [];
   } catch {
     return [];
   }
 };
 
 export const saveProjects = (projects: Project[]) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(projects.map(projectForStorage)));
 };

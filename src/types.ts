@@ -2,7 +2,8 @@ export type TemplateAsset = {
   id: string;
   name: string;
   mimeType: string;
-  dataUrl: string;
+  dataUrl?: string;
+  storageKey?: string;
   width: number;
   height: number;
 };
@@ -32,6 +33,7 @@ export type ColumnMapping = Record<string, string>;
 export type ExportSettings = {
   format: "png" | "pdf";
   quality: number;
+  maxDimension: number;
 };
 
 export type Project = {

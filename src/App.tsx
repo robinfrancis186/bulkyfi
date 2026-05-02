@@ -19,8 +19,8 @@ import {
 } from "lucide-react";
 import Papa from "papaparse";
 import { useEffect, useState } from "react";
-import { downloadBlob, makePdfBlob, renderProjectToPng, zipCertificates } from "./exporter";
-import { renderPdfFirstPage } from "./pdf";
+import { downloadBlob, exportSizeForProject, makePdfBlob, renderProjectToImage, renderProjectToPng, zipCertificates } from "./exporter";
+import { loadTemplateData, saveTemplateData } from "./indexedDb";
 import { createProject, loadProjects, nowIso, saveProjects, uid } from "./storage";
 import type { CertificateField, Project, RecipientRow, TemplateAsset } from "./types";
 
@@ -106,8 +106,38 @@ function App() {
   const [route, setRoute] = useState<Route>(routeFromPath);
   const [projects, setProjects] = useState<Project[]>(loadProjects);
   const [isAuthed, setIsAuthed] = useState(() => localStorage.getItem("easycertify.local.session") === "true");
+  const [templatesReady, setTemplatesReady] = useState(false);
 
-  useEffect(() => saveProjects(projects), [projects]);
+  useEffect(() => {
+    if (templatesReady) saveProjects(projects);
+  }, [projects, templatesReady]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const hydrateTemplates = async () => {
+      const hydrated = await Promise.all(
+        loadProjects().map(async (project) => {
+          if (!project.template || project.template.dataUrl) return project;
+          const key = project.template.storageKey || project.template.id;
+          const dataUrl = await loadTemplateData(key);
+          return dataUrl ? { ...project, template: { ...project.template, dataUrl } } : project;
+        })
+      );
+      await Promise.all(
+        hydrated.map((project) =>
+          project.template?.dataUrl
+            ? saveTemplateData(project.template.storageKey || project.template.id, project.template.dataUrl)
+            : Promise.resolve()
+        )
+      );
+      if (!cancelled) setProjects(hydrated);
+      if (!cancelled) setTemplatesReady(true);
+    };
+    hydrateTemplates().catch(() => setTemplatesReady(true));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const handler = () => setRoute(routeFromPath());
@@ -469,11 +499,14 @@ function EditorPage({
   const [selectedRowId, setSelectedRowId] = useState<string | undefined>(project?.rows[0]?.id);
   const [notice, setNotice] = useState("");
   const [exporting, setExporting] = useState(false);
+  const projectId = project?.id;
+  const firstFieldId = project?.fields[0]?.id;
+  const firstRowId = project?.rows[0]?.id;
 
   useEffect(() => {
-    setSelectedFieldId(project?.fields[0]?.id);
-    setSelectedRowId(project?.rows[0]?.id);
-  }, [project?.id]);
+    setSelectedFieldId(firstFieldId);
+    setSelectedRowId(firstRowId);
+  }, [projectId, firstFieldId, firstRowId]);
 
   if (!isAuthed) return <AuthRedirect navigate={navigate} />;
   if (!project) {
@@ -492,16 +525,19 @@ function EditorPage({
 
   const selectedField = project.fields.find((field) => field.id === selectedFieldId);
   const selectedRow = project.rows.find((row) => row.id === selectedRowId) || project.rows[0];
-  const size = project.template
-    ? { width: project.template.width, height: project.template.height }
-    : { width: 1600, height: 1131 };
+  const size = exportSizeForProject(project);
   const missingMappings = project.fields.filter((field) => !project.mappings[field.placeholder]);
 
   const patchProject = (patch: Partial<Project>) => updateProject({ ...project, ...patch });
   const patchField = (id: string, patch: Partial<CertificateField>) =>
     patchProject({ fields: project.fields.map((field) => (field.id === id ? { ...field, ...patch } : field)) });
 
-  const renderRow = async (row: RecipientRow) => renderProjectToPng(project, row, project.exportSettings.quality);
+  const renderRow = async (row: RecipientRow) => {
+    if (project.exportSettings.format === "pdf") {
+      return renderProjectToImage(project, row, { mimeType: "image/jpeg", quality: 0.9 });
+    }
+    return renderProjectToPng(project, row);
+  };
 
   const exportCurrent = async () => {
     if (!selectedRow) return;
@@ -512,7 +548,7 @@ function EditorPage({
       if (project.exportSettings.format === "png") {
         downloadBlob(await (await fetch(png)).blob(), `${filename}.png`);
       } else {
-        downloadBlob(makePdfBlob(png, size.width, size.height), `${filename}.pdf`);
+        downloadBlob(await makePdfBlob(png, size.width, size.height), `${filename}.pdf`);
       }
       setNotice("Certificate exported.");
     } catch (error) {
@@ -676,6 +712,7 @@ function DesignPanel({
     try {
       let rendered: { dataUrl: string; width: number; height: number };
       if (file.type === "application/pdf") {
+        const { renderPdfFirstPage } = await import("./pdf");
         rendered = await renderPdfFirstPage(file);
       } else {
         const dataUrl = await fileToDataUrl(file);
@@ -687,14 +724,12 @@ function DesignPanel({
         name: file.name,
         mimeType: file.type || "image/*",
         dataUrl: rendered.dataUrl,
+        storageKey: uid(),
         width: rendered.width,
         height: rendered.height
       };
-      if (asset.dataUrl.length > 4_500_000) {
-        setNotice("Template loaded, but it may be too large for reliable localStorage persistence.");
-      } else {
-        setNotice("Template loaded.");
-      }
+      await saveTemplateData(asset.storageKey || asset.id, rendered.dataUrl);
+      setNotice("Template loaded and saved locally.");
       patchProject({ template: asset });
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Template upload failed.");
@@ -955,7 +990,7 @@ function ExportPanel({
           className="mt-3 w-full accent-gold-500"
           type="range"
           min={1}
-          max={3}
+          max={2}
           step={0.5}
           value={project.exportSettings.quality}
           onChange={(event) =>
@@ -963,6 +998,28 @@ function ExportPanel({
           }
         />
         <span className="mt-1 block text-xs text-ink-400">{project.exportSettings.quality}x pixel ratio</span>
+      </label>
+      <label>
+        <span className="label">Max output edge</span>
+        <select
+          className="input mt-2"
+          value={project.exportSettings.maxDimension}
+          onChange={(event) =>
+            patchProject({
+              exportSettings: {
+                ...project.exportSettings,
+                maxDimension: Number(event.target.value)
+              }
+            })
+          }
+        >
+          <option value={1600}>Compact - 1600 px</option>
+          <option value={2400}>Balanced - 2400 px</option>
+          <option value={3200}>Print - 3200 px</option>
+        </select>
+        <span className="mt-1 block text-xs text-ink-400">
+          Current output: {exportSizeForProject(project).width} x {exportSizeForProject(project).height}px
+        </span>
       </label>
       {missingCount > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">

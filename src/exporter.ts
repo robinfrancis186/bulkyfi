@@ -1,5 +1,3 @@
-import { jsPDF } from "jspdf";
-import JSZip from "jszip";
 import type { Project, RecipientRow } from "./types";
 
 const DEFAULT_EXPORT_TEMPLATE =
@@ -50,11 +48,44 @@ const fitText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number) 
   return `${result}...`;
 };
 
-export const renderProjectToPng = async (project: Project, row: RecipientRow, quality = 2) => {
+const outputSize = (sourceWidth: number, sourceHeight: number, quality: number, maxDimension: number) => {
+  const rawWidth = sourceWidth * quality;
+  const rawHeight = sourceHeight * quality;
+  const longest = Math.max(rawWidth, rawHeight);
+  const scale = longest > maxDimension ? maxDimension / longest : 1;
+  return {
+    width: Math.round(rawWidth * scale),
+    height: Math.round(rawHeight * scale),
+    scale
+  };
+};
+
+export const exportSizeForProject = (project: Project) => {
   const sourceWidth = project.template?.width || 1600;
   const sourceHeight = project.template?.height || 1131;
-  const width = Math.round(sourceWidth * quality);
-  const height = Math.round(sourceHeight * quality);
+  const { width, height } = outputSize(
+    sourceWidth,
+    sourceHeight,
+    project.exportSettings.quality,
+    project.exportSettings.maxDimension
+  );
+  return { width, height };
+};
+
+export const renderProjectToImage = async (
+  project: Project,
+  row: RecipientRow,
+  options?: { mimeType?: "image/png" | "image/jpeg"; quality?: number }
+) => {
+  const sourceWidth = project.template?.width || 1600;
+  const sourceHeight = project.template?.height || 1131;
+  const { width, height } = outputSize(
+    sourceWidth,
+    sourceHeight,
+    project.exportSettings.quality,
+    project.exportSettings.maxDimension
+  );
+  const effectiveScale = width / sourceWidth;
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -73,7 +104,7 @@ export const renderProjectToPng = async (project: Project, row: RecipientRow, qu
     const y = (field.y / 100) * height;
     const boxWidth = (field.width / 100) * width;
     const boxHeight = (field.height / 100) * height;
-    const fontSize = field.fontSize * quality;
+    const fontSize = field.fontSize * effectiveScale;
     ctx.font = `${field.weight} ${fontSize}px "${field.fontFamily}", Georgia, serif`;
     ctx.fillStyle = field.color;
     ctx.textAlign = field.align;
@@ -82,8 +113,11 @@ export const renderProjectToPng = async (project: Project, row: RecipientRow, qu
     ctx.fillText(fitText(ctx, value, boxWidth), textX, y + boxHeight / 2, boxWidth);
   }
 
-  return canvas.toDataURL("image/png");
+  return canvas.toDataURL(options?.mimeType || "image/png", options?.quality ?? 0.92);
 };
+
+export const renderProjectToPng = async (project: Project, row: RecipientRow) =>
+  renderProjectToImage(project, row, { mimeType: "image/png" });
 
 export const dataUrlToBlob = async (dataUrl: string) => {
   const response = await fetch(dataUrl);
@@ -101,14 +135,22 @@ export const downloadBlob = (blob: Blob, filename: string) => {
   URL.revokeObjectURL(url);
 };
 
-export const makePdfBlob = (pngDataUrl: string, width = 1600, height = 1131) => {
+export const makePdfBlob = async (imageDataUrl: string, width = 1600, height = 1131) => {
+  const { jsPDF } = await import("jspdf");
   const orientation = width >= height ? "landscape" : "portrait";
   const pdf = new jsPDF({
     orientation,
     unit: "px",
     format: [width, height]
   });
-  pdf.addImage(pngDataUrl, "PNG", 0, 0, width, height);
+  pdf.addImage(
+    imageDataUrl,
+    imageDataUrl.startsWith("data:image/jpeg") ? "JPEG" : "PNG",
+    0,
+    0,
+    width,
+    height
+  );
   return pdf.output("blob");
 };
 
@@ -125,6 +167,7 @@ export const zipCertificates = async (
   renderRow: (row: RecipientRow) => Promise<string>,
   size: { width: number; height: number }
 ) => {
+  const { default: JSZip } = await import("jszip");
   const zip = new JSZip();
   for (const row of rows) {
     const png = await renderRow(row);
@@ -134,7 +177,7 @@ export const zipCertificates = async (
     if (project.exportSettings.format === "png") {
       zip.file(`${fileStem}.png`, await dataUrlToBlob(png));
     } else {
-      zip.file(`${fileStem}.pdf`, makePdfBlob(png, size.width, size.height));
+      zip.file(`${fileStem}.pdf`, await makePdfBlob(png, size.width, size.height));
     }
   }
   return zip.generateAsync({ type: "blob" });
