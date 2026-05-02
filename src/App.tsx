@@ -55,11 +55,11 @@ const DEFAULT_TEMPLATE =
   </defs>
   <rect width="1600" height="1131" fill="url(#paper)"/>
   <rect width="1600" height="1131" fill="url(#grid)"/>
-  <rect x="92" y="92" width="1416" height="947" rx="36" fill="none" stroke="#c9a84c" stroke-width="7"/>
-  <rect x="124" y="124" width="1352" height="883" rx="24" fill="none" stroke="#c9a84c" stroke-opacity=".45" stroke-width="2"/>
+  <rect x="92" y="92" width="1416" height="947" rx="36" fill="none" stroke="#0071e3" stroke-width="7"/>
+  <rect x="124" y="124" width="1352" height="883" rx="24" fill="none" stroke="#0071e3" stroke-opacity=".45" stroke-width="2"/>
   <circle cx="800" cy="252" r="58" fill="#1a1612"/>
-  <path d="M772 241h56M772 261h37" stroke="#c9a84c" stroke-width="8" stroke-linecap="round"/>
-  <circle cx="842" cy="279" r="28" fill="#c9a84c"/>
+  <path d="M772 241h56M772 261h37" stroke="#2aa7ff" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="842" cy="279" r="28" fill="#2aa7ff"/>
   <path d="M828 279l10 11 21-25" fill="none" stroke="#1a1612" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
   <text x="800" y="382" text-anchor="middle" font-family="Georgia, serif" font-size="70" fill="#1a1612">Certificate of Achievement</text>
   <text x="800" y="466" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" letter-spacing="5" fill="#9a8b6d">PROUDLY PRESENTED TO</text>

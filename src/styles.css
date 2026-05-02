@@ -210,11 +210,11 @@
 }
 
 .sidebar-brand .brand-mark {
-  color: #050506;
+  color: #fff;
   background:
     radial-gradient(circle at 30% 15%, rgba(255, 255, 255, .78), transparent 20%),
-    linear-gradient(145deg, #f7d964, #b58a1f 74%);
-  box-shadow: 0 14px 32px rgba(201, 168, 76, .18), inset 0 1px 0 rgba(255, 255, 255, .48);
+    linear-gradient(145deg, #2aa7ff, #0071e3 74%);
+  box-shadow: 0 14px 32px rgba(0, 113, 227, .26), inset 0 1px 0 rgba(255, 255, 255, .48);
 }
 
 .workspace-switch {
@@ -225,7 +225,7 @@
   margin: 18px 16px 16px;
   border-radius: 14px;
   padding: 12px;
-  color: #d7c8aa;
+  color: #d8e7ff;
   background: rgba(255, 255, 255, .04);
 }
 
@@ -241,7 +241,7 @@
   gap: 12px;
   border-radius: 14px;
   padding: 12px 14px;
-  color: #a89d8c;
+  color: #a8b5c7;
   font-size: 14px;
   font-weight: 600;
   text-align: left;
@@ -260,7 +260,7 @@
 
 .sidebar-nav svg,
 .workspace-switch svg {
-  color: #c9a84c;
+  color: #2aa7ff;
 }
 
 .sidebar-footer {
@@ -305,8 +305,8 @@
   height: 34px;
   place-items: center;
   border-radius: 50%;
-  color: #050506;
-  background: #c9a84c;
+  color: #fff;
+  background: linear-gradient(145deg, #2aa7ff, #0071e3);
   font-weight: 900;
 }
 
@@ -324,7 +324,7 @@
 
 .sidebar-profile small {
   margin-top: 2px;
-  color: #a89d8c;
+  color: #a8b5c7;
   font-size: 11px;
 }
 
@@ -355,8 +355,8 @@
   height: 42px;
   place-items: center;
   border-radius: 14px;
-  color: #c9a84c;
-  background: rgba(201, 168, 76, .1);
+  color: #0071e3;
+  background: rgba(0, 113, 227, .1);
 }
 
 .overview-panel {
